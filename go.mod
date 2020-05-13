@@ -5,7 +5,8 @@ go 1.14
 require (
 	github.com/ardanlabs/conf v1.2.2
 	github.com/dimfeld/httptreemux/v5 v5.2.2
-	github.com/google/go-cmp v0.4.0 // indirect
+	github.com/dimiro1/darwin v0.0.0-20191008194338-370f81775d3b
+	github.com/google/go-cmp v0.4.0
 	github.com/google/uuid v1.1.1
 	github.com/jmoiron/sqlx v1.2.0
 	github.com/lib/pq v1.5.2

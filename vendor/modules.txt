@@ -4,8 +4,16 @@ github.com/ardanlabs/conf
 # github.com/dimfeld/httptreemux/v5 v5.2.2
 ## explicit
 github.com/dimfeld/httptreemux/v5
+# github.com/dimiro1/darwin v0.0.0-20191008194338-370f81775d3b
+## explicit
+github.com/dimiro1/darwin
 # github.com/google/go-cmp v0.4.0
 ## explicit
+github.com/google/go-cmp/cmp
+github.com/google/go-cmp/cmp/internal/diff
+github.com/google/go-cmp/cmp/internal/flags
+github.com/google/go-cmp/cmp/internal/function
+github.com/google/go-cmp/cmp/internal/value
 # github.com/google/uuid v1.1.1
 ## explicit
 github.com/google/uuid
