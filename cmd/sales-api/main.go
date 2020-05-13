@@ -15,6 +15,7 @@ import (
 	"github.com/ardanlabs/conf"
 	"github.com/pkg/errors"
 	"github.com/raymonstah/ardanlabs-go-service/cmd/sales-api/internal/handlers"
+	"github.com/raymonstah/ardanlabs-go-service/internal/platform/database"
 )
 
 // build is the git version of this program. It is set using build flags in the Makefile.
@@ -47,6 +48,13 @@ func run() error {
 			WriteTimeout    time.Duration `conf:"default:5s"`
 			ShutdownTimeout time.Duration `conf:"default:5s,noprint"`
 		}
+		DB struct {
+			User       string `conf:"default:postgres"`
+			Password   string `conf:"default:postgres,noprint"`
+			Host       string `conf:"default:0.0.0.0"`
+			Name       string `conf:"default:postgres"`
+			DisableTLS bool   `conf:"default:false"`
+		}
 	}
 
 	if err := conf.Parse(os.Args[1:], "SALES", &cfg); err != nil {
@@ -74,6 +82,26 @@ func run() error {
 		return errors.Wrap(err, "generating config for output")
 	}
 	log.Printf("main : Config :\n%v\n", out)
+
+	// =========================================================================
+	// Start Database
+
+	log.Println("main : Started : Initializing database support")
+
+	db, err := database.Open(database.Config{
+		User:       cfg.DB.User,
+		Password:   cfg.DB.Password,
+		Host:       cfg.DB.Host,
+		Name:       cfg.DB.Name,
+		DisableTLS: cfg.DB.DisableTLS,
+	})
+	if err != nil {
+		return errors.Wrap(err, "connecting to db")
+	}
+	defer func() {
+		log.Printf("main : Database Stopping : %s", cfg.DB.Host)
+		db.Close()
+	}()
 
 	// =========================================================================
 	// Start Debug Service
@@ -108,7 +136,7 @@ func run() error {
 	// doesn't support load shedding
 	api := http.Server{
 		Addr:         cfg.Web.APIHost,
-		Handler:      handlers.API(build, shutdown, log),
+		Handler:      handlers.API(build, shutdown, log, db),
 		ReadTimeout:  cfg.Web.ReadTimeout,
 		WriteTimeout: cfg.Web.WriteTimeout,
 	}
