@@ -1,12 +1,21 @@
 package tests
 
 import (
+	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"log"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/raymonstah/ardanlabs-go-service/internal/data"
+	"github.com/raymonstah/ardanlabs-go-service/internal/platform/auth"
 	"github.com/raymonstah/ardanlabs-go-service/internal/platform/database"
 	"github.com/raymonstah/ardanlabs-go-service/internal/platform/database/databasetest"
+	"github.com/raymonstah/ardanlabs-go-service/internal/platform/web"
 	"github.com/raymonstah/ardanlabs-go-service/internal/schema"
 )
 
@@ -74,4 +83,86 @@ func NewUnit(t *testing.T) (*sqlx.DB, func()) {
 	}
 
 	return db, teardown
+}
+
+// Test owns state for running and shutting down tests.
+type Test struct {
+	DB            *sqlx.DB
+	Log           *log.Logger
+	Authenticator *auth.Authenticator
+
+	t       *testing.T
+	cleanup func()
+}
+
+// NewIntegration creates a database, seeds it, constructs an authenticator.
+func NewIntegration(t *testing.T) *Test {
+	t.Helper()
+
+	// Initialize and seed database. Store the cleanup function call later.
+	db, cleanup := NewUnit(t)
+
+	if err := data.Seed(db); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create the logger to use.
+	logger := log.New(os.Stdout, "TEST : ", log.LstdFlags|log.Lmicroseconds|log.Lshortfile)
+
+	// Create RSA keys to enable authentication in our service.
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Build an authenticator using this static key.
+	kid := "4754d86b-7a6d-4df5-9c65-224741361492"
+	kf := auth.NewSimpleKeyLookupFunc(kid, key.Public().(*rsa.PublicKey))
+	authenticator, err := auth.NewAuthenticator(key, kid, "RS256", kf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return &Test{
+		DB:            db,
+		Log:           logger,
+		Authenticator: authenticator,
+		t:             t,
+		cleanup:       cleanup,
+	}
+}
+
+// Teardown releases any resources used for the test.
+func (test *Test) Teardown() {
+	test.cleanup()
+}
+
+// Token generates an authenticated token for a user.
+func (test *Test) Token(email, pass string) string {
+	test.t.Helper()
+
+	claims, err := data.Users.Authenticate(
+		context.Background(), test.DB, time.Now(),
+		email, pass,
+	)
+	if err != nil {
+		test.t.Fatal(err)
+	}
+
+	tkn, err := test.Authenticator.GenerateToken(claims)
+	if err != nil {
+		test.t.Fatal(err)
+	}
+
+	return tkn
+}
+
+// Context returns an app level context for testing.
+func Context() context.Context {
+	values := web.Values{
+		TraceID: uuid.New().String(),
+		Now:     time.Now(),
+	}
+
+	return context.WithValue(context.Background(), web.KeyValues, &values)
 }

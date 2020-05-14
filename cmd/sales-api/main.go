@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/rsa"
 	"expvar"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	_ "net/http/pprof" // Register the pprof handlers
@@ -13,8 +15,10 @@ import (
 	"time"
 
 	"github.com/ardanlabs/conf"
+	"github.com/dgrijalva/jwt-go"
 	"github.com/pkg/errors"
 	"github.com/raymonstah/ardanlabs-go-service/cmd/sales-api/internal/handlers"
+	"github.com/raymonstah/ardanlabs-go-service/internal/platform/auth"
 	"github.com/raymonstah/ardanlabs-go-service/internal/platform/database"
 )
 
@@ -55,6 +59,11 @@ func run() error {
 			Name       string `conf:"default:postgres"`
 			DisableTLS bool   `conf:"default:false"`
 		}
+		Auth struct {
+			KeyID          string `conf:"default:1"`
+			PrivateKeyFile string `conf:"default:/app/private.pem"`
+			Algorithm      string `conf:"default:RS256"`
+		}
 	}
 
 	if err := conf.Parse(os.Args[1:], "SALES", &cfg); err != nil {
@@ -82,6 +91,27 @@ func run() error {
 		return errors.Wrap(err, "generating config for output")
 	}
 	log.Printf("main : Config :\n%v\n", out)
+
+	// =========================================================================
+	// Initialize authentication support
+
+	log.Println("main : Started : Initializing authentication support")
+
+	keyContents, err := ioutil.ReadFile(cfg.Auth.PrivateKeyFile)
+	if err != nil {
+		return errors.Wrap(err, "reading auth private key")
+	}
+
+	privateKey, err := jwt.ParseRSAPrivateKeyFromPEM(keyContents)
+	if err != nil {
+		return errors.Wrap(err, "parsing auth private key")
+	}
+
+	f := auth.NewSimpleKeyLookupFunc(cfg.Auth.KeyID, privateKey.Public().(*rsa.PublicKey))
+	authenticator, err := auth.NewAuthenticator(privateKey, cfg.Auth.KeyID, cfg.Auth.Algorithm, f)
+	if err != nil {
+		return errors.Wrap(err, "constructing authenticator")
+	}
 
 	// =========================================================================
 	// Start Database
@@ -136,7 +166,7 @@ func run() error {
 	// doesn't support load shedding
 	api := http.Server{
 		Addr:         cfg.Web.APIHost,
-		Handler:      handlers.API(build, shutdown, log, db),
+		Handler:      handlers.API(build, shutdown, log, db, authenticator),
 		ReadTimeout:  cfg.Web.ReadTimeout,
 		WriteTimeout: cfg.Web.WriteTimeout,
 	}
