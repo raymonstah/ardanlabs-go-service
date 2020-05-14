@@ -18,7 +18,8 @@ func API(build string, shutdown chan os.Signal, log *log.Logger, db *sqlx.DB, au
 	check := check{build: build, db: db}
 	app.Handle(http.MethodGet, "/test", check.health)
 
-	u := user{db: db}
+	u := user{db: db, authenticator: authenticator}
+	app.Handle("GET", "/v1/users/token", u.Token)
 	app.Handle("GET", "/v1/users", u.List, mid.Authenticate(authenticator), mid.HasRole(auth.RoleAdmin))
 	app.Handle("POST", "/v1/users", u.Create, mid.Authenticate(authenticator), mid.HasRole(auth.RoleAdmin))
 	app.Handle("GET", "/v1/users/:id", u.Retrieve, mid.Authenticate(authenticator))

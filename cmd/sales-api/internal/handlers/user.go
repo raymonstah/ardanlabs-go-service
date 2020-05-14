@@ -12,7 +12,8 @@ import (
 )
 
 type user struct {
-	db *sqlx.DB
+	db            *sqlx.DB
+	authenticator *auth.Authenticator
 }
 
 // List returns all the existing users in the system.
@@ -66,4 +67,39 @@ func (u *user) Create(ctx context.Context, w http.ResponseWriter, r *http.Reques
 	}
 
 	return web.Respond(ctx, w, usr, http.StatusCreated)
+}
+
+// Token handles a request to authenticate a user. It expects a request using
+// Basic Auth with a user's email and password. It responds with a JWT.
+func (u *user) Token(ctx context.Context, w http.ResponseWriter, r *http.Request, params map[string]string) error {
+	v, ok := ctx.Value(web.KeyValues).(*web.Values)
+	if !ok {
+		return web.NewShutdownError("web value missing from context")
+	}
+
+	email, pass, ok := r.BasicAuth()
+	if !ok {
+		err := errors.New("must provide email and password in Basic auth")
+		return web.NewRequestError(err, http.StatusUnauthorized)
+	}
+
+	claims, err := data.Users.Authenticate(ctx, u.db, v.Now, email, pass)
+	if err != nil {
+		switch err {
+		case data.ErrAuthenticationFailure:
+			return web.NewRequestError(err, http.StatusUnauthorized)
+		default:
+			return errors.Wrap(err, "authenticating")
+		}
+	}
+
+	var tkn struct {
+		Token string `json:"token"`
+	}
+	tkn.Token, err = u.authenticator.GenerateToken(claims)
+	if err != nil {
+		return errors.Wrap(err, "generating token")
+	}
+
+	return web.Respond(ctx, w, tkn, http.StatusOK)
 }

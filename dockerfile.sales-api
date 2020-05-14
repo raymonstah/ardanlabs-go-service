@@ -19,6 +19,7 @@ RUN mkdir -p /service
 
 # Copy the source code into the container.
 WORKDIR /service
+COPY private.pem private.pem
 COPY go.* ./
 COPY cmd cmd
 COPY internal internal
@@ -35,6 +36,7 @@ ARG BUILD_DATE
 ARG VCS_REF
 ARG PACKAGE_NAME
 ARG PACKAGE_PREFIX
+COPY --from=build_sales-api /service/private.pem /app/private.pem
 COPY --from=build_sales-api /service/cmd/${PACKAGE_PREFIX}${PACKAGE_NAME}/${PACKAGE_NAME} /app/main
 WORKDIR /app
 CMD /app/main
